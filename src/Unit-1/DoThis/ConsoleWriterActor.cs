@@ -13,6 +13,7 @@ namespace WinTail
         {
 
             // make sure we got a message
+            
             if (message is InputError)
             {
                 var msg = message as InputError;
