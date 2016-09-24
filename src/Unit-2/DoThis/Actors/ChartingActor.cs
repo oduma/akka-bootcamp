@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using Akka.Actor;
 
@@ -39,30 +40,68 @@ namespace ChartApp.Actors
                 SeriesName = seriesName;
             }
         }
+
+        public class TogglePause { }
         #endregion
 
         private readonly Chart _chart;
         private Dictionary<string, Series> _seriesIndex;
         public const int MaxPoints = 250;
         private int xPosCounter = 0;
+        private Button _pauseButton;
 
-        public ChartingActor(Chart chart) : this(chart, new Dictionary<string, Series>())
+        public ChartingActor(Chart chart, Button pauseButton) : this(chart, new Dictionary<string, Series>(), pauseButton)
         {
         }
 
-        public ChartingActor(Chart chart, Dictionary<string, Series> seriesIndex)
+        public ChartingActor(Chart chart, Dictionary<string, Series> seriesIndex,Button pauseButton)
         {
             _chart = chart;
             _seriesIndex = seriesIndex;
+            _pauseButton = pauseButton;
+            Charting();
+        }
+
+        private void Charting()
+        {
             Receive<InitializeChart>(ic => HandleInitialize(ic));
             Receive<AddSeries>(ase => HandleAddSeries(ase));
             Receive<RemoveSeries>(rse => HandleRemoveSeries(rse));
             Receive<Metric>(m => HandleMetrics(m));
+
+            Receive<TogglePause>(pause =>
+                                 {
+                                     SetPauseButtonText(true);
+                                     BecomeStacked(Paused);
+                                 });
         }
 
+        private void SetPauseButtonText(bool paused)
+        {
+            _pauseButton.Text = $"{(!paused ? "PAUSE ||" : "RESUME ->")}";
+        }
 
+        private void Paused()
+        {
+            Receive<Metric>(m => HandleMetricsPaused(m));
+            Receive<TogglePause>(t =>
+                                 {
+                                     SetPauseButtonText(false);
+                                     UnbecomeStacked();
+                                 });
+        }
         #region Individual Message Type Handlers
 
+        private void HandleMetricsPaused(Metric metric)
+        {
+            if (!string.IsNullOrEmpty(metric.Series) && _seriesIndex.ContainsKey(metric.Series))
+            {
+                var series = _seriesIndex[metric.Series];
+                series.Points.AddXY(xPosCounter++, 0.0d);
+                while(series.Points.Count>MaxPoints) series.Points.RemoveAt(0);
+                SetChartBoundaries();
+            }
+        }
         private void HandleAddSeries(AddSeries series)
         {
             if(!string.IsNullOrEmpty(series.Series.Name) &&
